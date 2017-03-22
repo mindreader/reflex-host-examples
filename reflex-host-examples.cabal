@@ -22,6 +22,7 @@ library
                      , Host4
                      , Host5
                      , Host6
+                     , Host7
                      -- , Host6.Test
                      , Interpret
                      -- , Interpret2
