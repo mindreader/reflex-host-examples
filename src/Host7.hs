@@ -18,12 +18,13 @@ module Host7 (
   , Output(..)
   ) where
 
+import Debug.Trace
 import Data.Maybe (isJust)
 import Control.Monad (unless, void)
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.IORef (readIORef)
+import Control.Monad.Ref (readRef)
 import System.IO
 
 import Data.Dependent.Sum
@@ -48,7 +49,7 @@ spider = do
     (eRead, eReadTriggerRef) <- newEventWithTriggerRef
 
     (Output eWrite eQuit) <- runHostFrame $ guest $ Input eOpen eRead
-    ((), FireCommand fireIO) <- hostPerformEventT $ guestIO eWrite
+    ((), FireCommand fire) <- hostPerformEventT $ guestIO eWrite
 
     hQuit  <- subscribeEvent eQuit
 
@@ -62,20 +63,20 @@ spider = do
         input <- liftIO getLine
 
 
-        mQuit <- liftIO (readIORef eReadTriggerRef) >>= \case
+        mQuit <- readRef eReadTriggerRef >>= \case
           Nothing -> return []
-          Just eTrigger -> do
-            fireIO [eTrigger :=> Identity input] readPhase
+          Just trig -> fire [trig :=> Identity input] readPhase
 
+        traceM (show mQuit)
         let quit = any isJust mQuit
 
         unless quit
           loop
 
-    void $ liftIO (readIORef eOpenTriggerRef) >>= \case
+    void $ readRef eOpenTriggerRef >>= \case
       Nothing -> return []
       Just eTrigger -> do
-       fireIO [eTrigger :=> Identity ()] (return Nothing)
+       fire [eTrigger :=> Identity ()] (return Nothing)
 
     loop
 
@@ -88,20 +89,6 @@ guest (Input eOpen eRead) = do
     eWrite   = leftmost [
         "Hi"  <$ eOpen
       ,          eMessage
-      , "Bye" <$ eQuit
-      ]
-  return $ Output eWrite eQuit
-
-
-
-guest' :: (Monad m, Reflex t) => Input t -> m (Output t)
-guest' (Input eOpen eRead) = do
-  let
-    eMessage =       ffilter (/= "/quit") eRead
-    eQuit    = () <$ ffilter (== "/quit") eRead
-    eWrite   = leftmost [
-                eMessage
-      ,  "Hi"  <$ eOpen
       , "Bye" <$ eQuit
       ]
   return $ Output eWrite eQuit
